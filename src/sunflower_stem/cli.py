@@ -27,6 +27,22 @@ def _build_parser() -> argparse.ArgumentParser:
     d = sub.add_parser("doctor", help="report what this installation can prove")
     d.set_defaults(func=_doctor)
 
+    demo = sub.add_parser(
+        "demo", help="run the built-in cases against the bundled target",
+        description="Start the bundled vulnerable chat application, run every "
+                    "built-in case and its benign control arm against it, and "
+                    "report what was proved. Needs no API key, no target of "
+                    "your own and no configuration.")
+    demo.add_argument(
+        "--safety", choices=("none", "weak", "strong"), default="none",
+        help="how hard the bundled application defends itself. Running the same "
+             "cases against 'strong' is the control for the defences themselves.")
+    demo.add_argument(
+        "--trials", type=int, default=5,
+        help="attempts per case, and per control arm (default: 5). A rate needs "
+             "a denominator worth having; 1 is not a measurement.")
+    demo.set_defaults(func=_demo)
+
     lab = sub.add_parser(
         "lab", help="serve the bundled vulnerable chat app on loopback",
         description="Serve the deliberately vulnerable chat application that "
@@ -46,6 +62,15 @@ def _build_parser() -> argparse.ArgumentParser:
              "reproducible and what makes the quickstart keyless.")
     lab.set_defaults(func=_lab)
     return p
+
+
+def _demo(args: argparse.Namespace) -> int:
+    from sunflower_stem.demo import run
+
+    if args.trials < 1:
+        print("--trials must be at least 1", file=sys.stderr)
+        return 2
+    return run(safety=args.safety, trials=args.trials)
 
 
 def _lab(args: argparse.Namespace) -> int:

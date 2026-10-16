@@ -769,7 +769,12 @@ class Unscored:
     missing: tuple[str, ...]
 
     def __str__(self) -> str:
-        return f"{self.name} unreachable: needs {', '.join(self.missing)}"
+        # No "unreachable" here. Every caller already frames it -- `why_not`
+        # wraps this in "unreachable: no scorable oracle: ..." -- and saying it
+        # twice produced "unreachable: no scorable oracle: judge unreachable:
+        # needs judge", which is the first thing a reader sees on a case that
+        # was not probed.
+        return f"{self.name} needs {', '.join(self.missing)}"
 
 
 @dataclass(frozen=True)
