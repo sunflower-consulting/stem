@@ -1,0 +1,50 @@
+[project]
+name = "sunflower-stem"
+version = "0.1.0.dev0"
+description = "Measure whether an attack on an LLM application actually worked, against a control, proved on a channel the target does not control."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Sunflower Consulting" }]
+keywords = ["llm", "security", "red-team", "prompt-injection", "evaluation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+stem = "sunflower_stem.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sunflower-consulting/stem"
+Source = "https://github.com/sunflower-consulting/stem"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
