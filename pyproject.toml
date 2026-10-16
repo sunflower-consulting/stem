@@ -48,3 +48,11 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+
+[tool.ruff.lint]
+# SIM103 rewrites a guard-clause chain into `return not (not a and b)`. The gate
+# and the authorization record are written as sequential guard clauses on
+# purpose: each refusal sits next to the comment explaining it, and a reader
+# checking whether the order is fail-closed has to be able to read them in
+# order. A compound boolean is shorter and strictly harder to audit.
+ignore = ["SIM103"]
