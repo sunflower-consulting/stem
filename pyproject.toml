@@ -56,3 +56,11 @@ src = ["src", "tests"]
 # checking whether the order is fail-closed has to be able to read them in
 # order. A compound boolean is shorter and strictly harder to audit.
 ignore = ["SIM103"]
+
+[tool.ruff.lint.per-file-ignores]
+# The lab is a measurement instrument, kept behaviourally identical to the
+# version the private harness's characterisation tests describe. Editing its
+# branch structure or its shebang to satisfy a linter would make the two drift
+# for no behavioural gain, and a benchmark target that quietly stopped being the
+# same target is the one change here that cannot be noticed from a result.
+"src/sunflower_stem/lab/*" = ["SIM102", "EXE001"]

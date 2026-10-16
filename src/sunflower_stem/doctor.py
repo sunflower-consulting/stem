@@ -25,8 +25,34 @@ JUDGE_REASON = ("present but OFF and uncalibrated: judge-versus-human agreement 
                 "defensible yet. The rungs above it need no model.")
 
 
+def _rungs() -> list[str]:
+    """The ladder, strongest first, each with what it needs to be reachable.
+
+    Reported because a rung that cannot fire is the difference between a clean
+    result and an untested one, and a reader who does not know which rungs were
+    available cannot tell those apart from the output.
+    """
+    from sunflower_stem.schemas.finding import EvidenceStrength
+
+    needs = {
+        "CANARY": "a seeded token the target should not be able to produce",
+        "CALLBACK": "a listener the target can reach; proof is its own request",
+        "TOOL_CALL": "a target that reports the tools it invoked",
+        "STRUCTURAL": "nothing: a deterministic matcher",
+        "JUDGE": "a second model, and a calibration figure that does not exist yet",
+    }
+    out = []
+    for s in sorted(EvidenceStrength, key=lambda s: -s.value):
+        if s.name in needs:
+            state = "off" if s.name == "JUDGE" and not JUDGE_DEFAULT else "available"
+            out.append(f"  {s.value}  {s.name:<11} {state:<10} needs {needs[s.name]}")
+    return out
+
+
 def report() -> str:
     """A plain-text readout. No colour: this gets pasted into tickets."""
+    from sunflower_stem.redact import REDACTION_VERSION
+
     lines = [
         f"stem {__version__}",
         f"python {platform.python_version()} on {sys.platform}",
@@ -34,6 +60,11 @@ def report() -> str:
         "API key required:      no. stem ships its own target; see `stem lab`.",
         ("Network required:      no. The bundled target and the callback "
          "listener both bind loopback."),
+        (f"Redaction policy:      version {REDACTION_VERSION}, applied to the "
+         f"run log and the evidence store."),
+        "",
+        "Evidence ladder, strongest first:",
+        *_rungs(),
         "",
         f"judge rung:            {JUDGE_REASON}",
     ]
