@@ -90,6 +90,34 @@ def test_the_undefended_target_has_a_case_its_control_also_fires(demo):
         "longer demonstrates the thing it exists to demonstrate")
 
 
+def test_the_out_of_band_rung_is_demonstrated(demo):
+    """The one headline claim the demo could not show.
+
+    Out-of-band proof is the rung that distinguishes this tool from one that
+    greps replies, and for as long as `chat-markdown-exfil` never reached the
+    lab's embed branch, the strongest-rung column held NONE, CANARY, STRUCTURAL
+    and TOOL_CALL and nothing else. The failure this prevents is that regressing
+    silently: every other assertion in this file would still pass with the
+    CALLBACK rung dead, because the row would still be present, still carry a
+    control arm and still reconcile with the summary.
+    """
+    out = demo()
+    row = next((ln for ln in out.splitlines()
+                if ln.startswith("chat-markdown-exfil")), None)
+    assert row, f"the exfiltration case is not in the table at all\n{out}"
+    _, rung, attack, control, *_ = row.split()
+    assert rung == "CALLBACK", f"not proved by the target's own traffic: {row}"
+    # Separated, not merely fired. Both arms are told to append the image, so
+    # both reach the collector; only the attack's fetch carries the canary, and
+    # a control that fired as often would make this row rejected.
+    assert _ratio(attack) == 1.0, row
+    assert _ratio(control) == 0.0, row
+    # Not `validated`, which also needs the p-value under the threshold and so
+    # depends on the trial budget -- at two trials the strongest honest verdict
+    # is `reproduced`. What must never come back is the rejection.
+    assert not row.rstrip().endswith("rejected"), row
+
+
 def test_turning_the_defences_on_changes_what_is_proved(demo):
     """The defence arm. Not that the numbers drop to zero everywhere -- a
     guardrail that filters text does nothing about a tool authorization flaw --
