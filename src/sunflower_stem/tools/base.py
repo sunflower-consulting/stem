@@ -48,3 +48,23 @@ class Tool(abc.ABC):
     @abc.abstractmethod
     def __call__(self, req: ToolRequest) -> dict:
         ...
+
+
+#: Lifted from the session module rather than importing it: that module is 336
+#: lines of session storage this package has no use for, and this is a pure
+#: twelve-line function. It lives on the base rather than in one transport,
+#: because both the single-shot and the conversational client need it.
+#: The ORDER is load-bearing and not cosmetic -- see the docstring.
+def merge_auth_headers(caller: dict, session: dict) -> dict:
+    """Session headers UNDER the caller's, never over them.
+
+    This was `headers.update(session)`, so the stored session won -- and
+    `authed` defaults to True. A forged JWT passed in `headers`, which is the
+    whole point of the jwt_tool workflow the prompt teaches, was silently
+    dropped, the real token was sent instead, and the result reported success
+    as the session user. The forgery test could not fail and could not pass:
+    it was never run. An explicit header is the caller saying what it wants.
+    """
+    out = dict(session)
+    out.update({k: v for k, v in (caller or {}).items() if v is not None})
+    return out

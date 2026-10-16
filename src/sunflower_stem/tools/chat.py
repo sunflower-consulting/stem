@@ -30,26 +30,7 @@ from sunflower_stem.nethttp import connect
 from sunflower_stem.policy.decision import ToolRequest, host_of
 from sunflower_stem.schemas.evidence import EvidenceKind
 from sunflower_stem.schemas.target import ActionClass
-from sunflower_stem.tools.base import Tool
-
-
-#: Lifted from the session module rather than importing it: that module is
-#: 336 lines of session storage this package has no use for, and this is a
-#: pure twelve-line function. The ORDER matters and is not cosmetic -- see
-#: the docstring.
-def merge_auth_headers(caller: dict, session: dict) -> dict:
-    """Session headers UNDER the caller's, never over them.
-
-    This was `headers.update(session)`, so the stored session won -- and
-    `authed` defaults to True. A forged JWT passed in `headers`, which is the
-    whole point of the jwt_tool workflow the prompt teaches, was silently
-    dropped, the real token was sent instead, and the result reported success
-    as the session user. The forgery test could not fail and could not pass:
-    it was never run. An explicit header is the caller saying what it wants.
-    """
-    out = dict(session)
-    out.update({k: v for k, v in (caller or {}).items() if v is not None})
-    return out
+from sunflower_stem.tools.base import Tool, merge_auth_headers
 
 
 class ChatProbe(Tool):
