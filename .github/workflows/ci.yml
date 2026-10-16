@@ -47,6 +47,16 @@ jobs:
       - run: pip install dist/*.whl
       - run: stem --version
       - run: stem doctor
+      # The headline is `stem demo`, so CI runs the command a reader types
+      # first and asserts the two things the output must contain: a measured
+      # row, and a case reported as not probed rather than as a zero.
+      - name: the quickstart produces a measured result with no key
+        run: |
+          stem demo | tee /tmp/demo.txt
+          grep -q "cases considered" /tmp/demo.txt
+          grep -q "not probed" /tmp/demo.txt
+          grep -q "matched" /tmp/demo.txt
+
       # The lab is the target the quickstart attacks, so "it starts and answers"
       # is part of the claim rather than an implementation detail.
       - name: the bundled lab serves with no model and no key
