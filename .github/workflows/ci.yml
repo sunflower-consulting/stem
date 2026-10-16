@@ -1,5 +1,10 @@
 name: ci
 
+# The runner is pinned rather than `ubuntu-latest`. That label migrates to
+# Ubuntu 26 from 2026-10-19, and a runner OS changing underneath a build on
+# someone else's schedule is a variable worth not having. Move it deliberately,
+# as its own commit, so a failure that follows is attributable.
+
 on:
   push:
     branches: [main]
@@ -10,14 +15,17 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12", "3.13"]
+        # 3.14 is included because it is what this is developed on. A package
+        # whose own author runs an untested interpreter is one bug report away
+        # from finding that out in public.
+        python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --upgrade pip
@@ -25,17 +33,27 @@ jobs:
       - run: ruff check .
       - run: pytest -q
 
-  # The two-command quickstart is the headline claim, so it is tested rather
-  # than asserted: a clean machine, a build from source, an install of the
-  # wheel, and the command a reader will actually type first.
   quickstart:
-    runs-on: ubuntu-latest
+    # The two-command quickstart is the headline claim, so it is tested rather
+    # than asserted: a clean machine, a build from source, an install of the
+    # wheel, and the commands a reader will actually type first.
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install build && python -m build
       - run: pip install dist/*.whl
       - run: stem --version
       - run: stem doctor
+      # The lab is the target the quickstart attacks, so "it starts and answers"
+      # is part of the claim rather than an implementation detail.
+      - name: the bundled lab serves with no model and no key
+        run: |
+          stem lab --port 5005 &
+          for i in $(seq 1 40); do
+            curl -fsS http://127.0.0.1:5005/health >/dev/null 2>&1 && break
+            sleep 0.25
+          done
+          curl -fsS http://127.0.0.1:5005/health | tee /dev/stderr | grep -q '"deterministic": true'
