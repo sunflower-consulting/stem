@@ -25,9 +25,14 @@ stem rejects it, and the rejection is the point.
 from __future__ import annotations
 
 import threading
-from datetime import date
+from datetime import UTC, date, datetime
+from pathlib import Path
 
 CHAT_TOOLS = ("chat_open", "chat_say", "chat_reset")
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
 
 #: Switched on explicitly because capability checks are fail-closed: an
 #: unlisted switch reads as off, and `chat-markdown-exfil` would then be
@@ -76,8 +81,14 @@ def _verdict(finding) -> str:
     return finding.state.value if finding is not None else "-"
 
 
-def run(*, safety: str = "none", trials: int = 5, quiet: bool = False) -> int:
-    """Run the built-in cases against the bundled lab. Returns an exit code."""
+def run(*, safety: str = "none", trials: int = 5, quiet: bool = False,
+        save: str | None = None, quotable: bool = False) -> int:
+    """Run the built-in cases against the bundled lab. Returns an exit code.
+
+    `save` writes a run bundle, which is what makes the run quotable by anything
+    other than the terminal it printed to. Off by default: the two-command
+    quickstart should leave nothing behind on a reader's machine.
+    """
     from sunflower_stem.collector import CallbackCollector
     from sunflower_stem.context import AgentContext
     from sunflower_stem.evidence.store import EvidenceStore
@@ -93,6 +104,10 @@ def run(*, safety: str = "none", trials: int = 5, quiet: bool = False) -> int:
         if not quiet:
             print(*a, flush=True)
 
+    from sunflower_stem.runbundle import run_id as _mint
+
+    rid = _mint("demo")
+    started = _now()
     srv, _lab = serve(port=0, deterministic=True, safety=safety)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     port = srv.server_address[1]
@@ -135,13 +150,31 @@ def run(*, safety: str = "none", trials: int = 5, quiet: bool = False) -> int:
 
     try:
         findings, stats = sweep_builtins(
-            ctx, runnable, target_ip="127.0.0.1", port=port, run_id="demo",
+            ctx, runnable, target_ip="127.0.0.1", port=port, run_id=rid,
             trials=trials, collector=collector, seeds={"canary": CANARY},
             cases=BUILTIN_CHAT_CASES, scoring=runnable, unreachable=unreachable,
             transport={}, on_result=None)
     finally:
         collector.stop()
         srv.shutdown()
+
+    if save:
+        from sunflower_stem import runbundle
+
+        bundle = runbundle.write(
+            Path(save) / rid,
+            runbundle.Manifest(
+                run_id=rid, quotable=quotable,
+                not_quotable_because=("" if quotable else
+                                      "the bundled lab is not a client target"),
+                trials=trials, cases=sorted(runnable),
+                skipped=dict(unreachable or {}),
+                target_family="sunflower-stem bundled lab",
+                target_config=f"safety={safety}, scripted brain",
+                started_at=started, finished_at=_now()),
+            findings)
+        say(f"\nbundle     {bundle}  "
+            f"({'quotable' if quotable else 'not quotable'})")
 
     _print_table(findings, stats, say)
     return 0
@@ -151,7 +184,12 @@ def _print_table(findings, stats, say) -> None:
     rows = []
     for f in findings:
         t = f.trials
-        cid = f.id.replace("demo-", "", 1)
+        # The case id the finding carries, not the finding id with a prefix
+        # chopped off it. The old line stripped a literal "demo-", which was
+        # correct only while the run id was the literal string "demo": the moment
+        # a run got a real id the table printed `2026-10-18T12-00-32_chat-crescendo`
+        # as the case name. A finding knows which case it came from, so ask it.
+        cid = (f.corpus_id or (f.test_cases[0] if f.test_cases else f.id))
         p = "" if t.p_value is None else f"{t.p_value:.3f}"
         rows.append((cid, f.evidence_strength.name,
                      f"{t.hits}/{t.trials}", f"{t.control_hits}/{t.control_trials}",

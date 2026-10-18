@@ -164,3 +164,29 @@ def test_the_readme_quotes_the_not_probed_reason_the_demo_actually_prints():
         run(trials=1)
     assert quoted in buf.getvalue(), (
         f"the README quotes {quoted!r}, which the demo does not print")
+
+
+def test_the_table_names_the_case_and_not_the_run(capsys):
+    """The row label is the case id, taken from the finding rather than parsed out
+    of its finding id.
+
+    The old line stripped a literal `"demo-"` prefix, which was right only while
+    the run id was the literal string `demo`. The moment a run got a real id, every
+    row read `2026-10-18T12-00-32_chat-crescendo`, and three tests that assert on
+    the table caught it only indirectly. This asserts the thing itself."""
+    run(trials=1)
+    out = capsys.readouterr().out
+    # Rows sit between the rule and the blank line before the summary. Skip the
+    # rule itself and the indented continuation lines that carry a skip reason.
+    lines = out.splitlines()
+    start = next(i for i, ln in enumerate(lines) if set(ln.strip()) == {"-"}) + 1
+    labels = []
+    for ln in lines[start:]:
+        if not ln.strip():
+            break
+        if ln.startswith(" "):
+            continue
+        labels.append(ln.split()[0])
+    assert len(labels) == 6, f"expected six rows, got {labels}"
+    for label in labels:
+        assert label.startswith("chat-"), f"row labelled with a run id: {label}"

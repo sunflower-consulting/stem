@@ -43,6 +43,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--trials", type=int, default=5,
         help="attempts per case, and per control arm (default: 5). A rate needs "
              "a denominator worth having; 1 is not a measurement.")
+    demo.add_argument(
+        "--save", metavar="DIR",
+        help="write a run bundle under DIR/<run-id>: the manifest, the findings "
+             "and the events. Off by default, because the quickstart should leave "
+             "nothing behind -- but a run nobody wrote down cannot be exported, "
+             "quoted or diffed against.")
     demo.set_defaults(func=_demo)
 
     lab = sub.add_parser(
@@ -102,6 +108,29 @@ def _build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--model", default="",
                      help=f"served model name; overrides ${MODEL_ENV}.")
     cal.set_defaults(func=_calibrate)
+
+    ex = sub.add_parser(
+        "export", help="write one run's measurements into an engagement directory",
+        description="Write a run's numbers where a document generator reads them. "
+                    "Writes `<engagement>/runs/<run-id>/` and never the engagement "
+                    "root, so retests and tuning runs do not collide and nothing "
+                    "needs overwriting. `stem consolidate` produces the single "
+                    "file a report renders from.")
+    ex.add_argument("run_id", help="a run id under --runs-dir, or a path to a bundle")
+    ex.add_argument("engagement_dir", help="the engagement directory to write into")
+    ex.add_argument("--runs-dir", default="runs",
+                    help="where run bundles live (default: runs/)")
+    ex.set_defaults(func=_export)
+
+    con = sub.add_parser(
+        "consolidate", help="build the engagement's measurements from its quotable runs",
+        description="Read every exported run marked quotable and write the one "
+                    "measurements file a document reads. Idempotent: delete the "
+                    "output, run it again, get an identical file. Runs marked not "
+                    "quotable stay on disk and never reach a client, which is what "
+                    "makes testing the same case five times safe.")
+    con.add_argument("engagement_dir")
+    con.set_defaults(func=_consolidate)
     return p
 
 
@@ -111,7 +140,12 @@ def _demo(args: argparse.Namespace) -> int:
     if args.trials < 1:
         print("--trials must be at least 1", file=sys.stderr)
         return 2
-    return run(safety=args.safety, trials=args.trials)
+    # No `--quotable` here, deliberately. `quotable` means "may be quoted to a
+    # client" and the bundled lab is the target stem ships so it can attack
+    # itself, so a run against it can never be evidence in a deliverable. The
+    # manifest records that reason rather than leaving a reader to infer it from
+    # a flag they did not pass.
+    return run(safety=args.safety, trials=args.trials, save=args.save)
 
 
 def _lab(args: argparse.Namespace) -> int:
@@ -284,6 +318,67 @@ def _calibrate(args: argparse.Namespace) -> int:
     print(render(verdicts, judge_name=f"{model} at {endpoint}", replies=len(replies)))
     # Non-zero when there is something to fix, so this can gate a pipeline.
     return 1 if any(not v.ok for v in verdicts) else 0
+
+
+def _export(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from sunflower_stem import runbundle
+    from sunflower_stem.export import write_run
+
+    bundle = Path(args.run_id)
+    if not bundle.is_dir():
+        bundle = Path(args.runs_dir) / args.run_id
+    if not bundle.is_dir():
+        print(f"no run bundle at {bundle}. `stem demo --save runs/` writes one.",
+              file=sys.stderr)
+        return 2
+    manifest, findings = runbundle.load(bundle)
+    if not manifest:
+        print(f"{bundle} has no manifest, so it is not a finished run. A run "
+              f"killed partway through leaves events and no manifest.",
+              file=sys.stderr)
+        return 2
+    try:
+        out = write_run(args.engagement_dir, manifest, findings)
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    rows = len((out / "measurements.yaml").read_text().splitlines())
+    quotable = manifest.get("quotable") is True
+    print(f"wrote {out}")
+    print(f"  {len(findings)} finding(s), {rows} lines of measurements")
+    if not quotable:
+        why = manifest.get("not_quotable_because") or "not marked quotable"
+        print(f"  NOT QUOTABLE ({why}), so `stem consolidate` will skip it. The "
+              f"run stays on disk and stays diffable.")
+    return 0
+
+
+def _consolidate(args: argparse.Namespace) -> int:
+    from sunflower_stem.consolidate import write
+
+    try:
+        out, notes = write(args.engagement_dir)
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    import yaml
+
+    doc = yaml.safe_load(out.read_text()) or {}
+    cases = doc.get("cases") or []
+    quoted = doc.get("runs_quoted") or []
+    print(f"wrote {out}")
+    print(f"  {len(cases)} case(s) from {len(quoted)} quotable run(s)")
+    for note in notes:
+        print(f"  - {note}")
+    if not cases:
+        # Said rather than left as an empty file, because an empty appendix and a
+        # missing one look identical in a PDF and mean different things.
+        print("  nothing was consolidated. A report rendering this would show an "
+              "empty measurement appendix,")
+        print("  which reads like a clean result and is not one.")
+    return 0
 
 
 def _doctor(_args: argparse.Namespace) -> int:

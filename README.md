@@ -107,6 +107,8 @@ stem lab        serve the bundled vulnerable application on loopback
 stem doctor     report what this installation can and cannot prove
 stem judge      report the judge rung's configuration and its rubric library
 stem calibrate  check whether each judge rubric's threshold is calibrated
+stem export     write one run's measurements where a document generator reads them
+stem consolidate  build an engagement's measurements from its quotable runs
 ```
 
 `stem doctor` is authoritative. If it disagrees with this README, believe it.
