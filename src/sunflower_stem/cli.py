@@ -165,6 +165,21 @@ def _judge(args: argparse.Namespace) -> int:
         print("                  has never been measured scores nothing, so a case "
               "resting on")
         print("                  one reports as not probed rather than as a pass.")
+
+    # Per rubric, because "uncalibrated" is one word for three different situations
+    # and they send a reader to three different places: measure it, measure more of
+    # it, or fix the rubric. The polarity is shown beside it because it decides
+    # which arm a calibration run expects the rubric to fire on, and an inverse
+    # rubric read as positive inverts its whole read-out.
+    print()
+    width = max(len(name) for name in rubrics)
+    print(f"  {'rubric':<{width}}  {'polarity':<9}  state")
+    print("  " + "-" * (width + 58))
+    for name in sorted(rubrics):
+        r = rubrics[name]
+        state = "CALIBRATED" if r.calibrated else f"withheld: {r.withheld_because}"
+        print(f"  {name:<{width}}  {r.polarity:<9}  {state}")
+    print()
     print(f"endpoint:         {endpoint or f'not configured (set ${ENDPOINT_ENV})'}")
     print(f"model:            {model or f'not configured (set ${MODEL_ENV})'}")
 

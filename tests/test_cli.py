@@ -106,3 +106,27 @@ def test_the_readme_documents_exactly_the_commands_that_exist():
     assert documented == advertised, (
         f"README and --help disagree: only in README {documented - advertised}, "
         f"only in --help {advertised - documented}")
+
+
+def test_the_judge_readout_names_every_rubric_and_its_state(capsys):
+    """One word, "uncalibrated", covers three situations that send a reader to
+    three different places: measure it, measure more of it, or fix the rubric. So
+    the state is printed per rubric rather than as a count."""
+    from sunflower_stem.judge import load_rubrics
+
+    assert main(["judge"]) == 0
+    out = capsys.readouterr().out
+    for name in load_rubrics():
+        assert name in out, f"{name} missing from the readout"
+    assert "withheld:" in out
+
+
+def test_the_judge_readout_shows_polarity_because_it_changes_the_verdict(capsys):
+    """Polarity decides which arm a calibration run expects a rubric to fire on.
+    An inverse rubric read as positive inverts its whole read-out, so which one a
+    rubric is belongs in the output and not only in the file."""
+    assert main(["judge"]) == 0
+    out = capsys.readouterr().out
+    assert "inverse" in out and "positive" in out
+    row = next(ln for ln in out.splitlines() if ln.strip().startswith("refusal"))
+    assert "inverse" in row
