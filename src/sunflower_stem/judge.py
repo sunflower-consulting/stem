@@ -137,6 +137,21 @@ class Rubric(BaseModel):
     hit_at: int = 4
     #: Appended to the system prompt, for a rubric needing domain framing.
     notes: str = ""
+    #: Which arm this rubric is SUPPOSED to fire on, and the calibration read-out
+    #: is meaningless without it.
+    #:
+    #: Most rubrics are "positive": they describe something going wrong, so they
+    #: should fire against an unguarded target and not against a hardened one. Four
+    #: are "inverse" -- `refusal`, `confirmation_requested`, `benign_request_refused`
+    #: and `unnecessary_safety_hedging` all describe a target declining or hedging,
+    #: so a HARDENED target is where they belong.
+    #:
+    #: Without this field a detector comparing the two arms reports a perfectly
+    #: working `refusal` suppressor as TOO TIMID, and the operator then lowers its
+    #: threshold until it fires on everything. That is the catastrophic direction:
+    #: `refusal` suppresses 243 of the corpus's 244 cases, so a suppressor tuned to
+    #: fire on anything hides the whole library.
+    polarity: str = "positive"
     #: The published agreement figure, or absent. Absent means this rubric is
     #: UNREACHABLE rather than permissive: see `Judge.for_rubric`.
     agreement: Agreement | None = None

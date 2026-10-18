@@ -11,6 +11,7 @@ import argparse
 import sys
 
 from sunflower_stem import __version__
+from sunflower_stem.calibrate import MOCK_JUDGES
 from sunflower_stem.judge import ENDPOINT_ENV, MODEL_ENV
 
 
@@ -81,6 +82,26 @@ def _build_parser() -> argparse.ArgumentParser:
                             "it is a flag: `stem doctor` and the listing below "
                             "must both work offline.")
     judge.set_defaults(func=_judge)
+
+    cal = sub.add_parser(
+        "calibrate", help="report whether each judge rubric's threshold is calibrated",
+        description="Run every rubric against the bundled lab at two guardrail "
+                    "levels and report, per rubric, whether it separates a "
+                    "hardened target from an unguarded one. With no endpoint "
+                    "configured this runs the DRY PASS: three constant judges "
+                    "whose read-out proves the detector works before anyone "
+                    "spends GPU time on the real question. Produces a "
+                    "discrimination verdict, never an agreement figure.")
+    cal.add_argument("--dry", action="store_true",
+                     help="force the dry pass even when an endpoint is configured.")
+    cal.add_argument("--judge", default="",
+                     help="one constant judge by name, instead of all three: "
+                          + ", ".join(MOCK_JUDGES))
+    cal.add_argument("--endpoint", default="",
+                     help=f"OpenAI-compatible base URL; overrides ${ENDPOINT_ENV}.")
+    cal.add_argument("--model", default="",
+                     help=f"served model name; overrides ${MODEL_ENV}.")
+    cal.set_defaults(func=_calibrate)
     return p
 
 
@@ -176,6 +197,78 @@ def _judge(args: argparse.Namespace) -> int:
           "against the")
     print("                  model you need proves it can run.")
     return 0
+
+
+def _calibrate(args: argparse.Namespace) -> int:
+    """The dry pass by default, the live one when an endpoint says so."""
+    import os
+
+    from sunflower_stem.calibrate import (
+        collect_replies,
+        mock_judge,
+        rehearse,
+        render,
+    )
+    from sunflower_stem.judge import Judge, load_rubrics
+    from sunflower_stem.modelcall import ChatTransport
+
+    rubrics = load_rubrics()
+    if not rubrics:
+        print("no rubrics to calibrate: the installed package has none.",
+              file=sys.stderr)
+        return 2
+    if args.judge and args.judge not in MOCK_JUDGES:
+        print(f"unknown constant judge {args.judge!r}; choose from "
+              f"{', '.join(MOCK_JUDGES)}", file=sys.stderr)
+        return 2
+
+    endpoint = args.endpoint or os.environ.get(ENDPOINT_ENV, "").strip()
+    model = args.model or os.environ.get(MODEL_ENV, "").strip()
+    dry = args.dry or bool(args.judge) or not (endpoint and model)
+
+    # Collected once and reused across judges: the lab's scripted brain is
+    # deterministic, so three judges scoring the SAME replies is what makes their
+    # read-outs comparable. Re-collecting per judge would also triple the run for
+    # identical input.
+    replies = collect_replies()
+
+    if dry:
+        if not (endpoint and model):
+            print(f"no endpoint configured (${ENDPOINT_ENV}, ${MODEL_ENV}), so this "
+                  f"is the dry pass.\n", flush=True)
+        names = [args.judge] if args.judge else list(MOCK_JUDGES)
+        failures = []
+        for name in names:
+            _reply, expected = MOCK_JUDGES[name]
+            verdicts = rehearse(mock_judge(name, rubrics), rubrics=rubrics,
+                                replies=replies)
+            got = {v.verdict for v in verdicts}
+            # The dry pass INVERTS the usual success condition: a constant judge is
+            # supposed to provoke a pathology, and the detector is sound only if it
+            # reports that pathology for every rubric. A clean read-out here would
+            # mean the detector cannot see anything.
+            ok = got == {expected}
+            print(render(verdicts, judge_name=name, replies=len(replies)), flush=True)
+            print(f"\nexpected every rubric {expected}: "
+                  f"{'OK' if ok else 'MISMATCH, got ' + ', '.join(sorted(got))}\n",
+                  flush=True)
+            if not ok:
+                failures.append(name)
+        if failures:
+            sys.stdout.flush()
+            print(f"the detector is not sound: {', '.join(failures)} did not produce "
+                  f"the read-out it must.", file=sys.stderr)
+            return 1
+        print("the detector behaves. A live run against a real judge is now worth "
+              "the GPU time.")
+        return 0
+
+    judge = Judge(ChatTransport(endpoint, model), rubrics=rubrics,
+                  require_calibrated=False)
+    verdicts = rehearse(judge, rubrics=rubrics, replies=replies)
+    print(render(verdicts, judge_name=f"{model} at {endpoint}", replies=len(replies)))
+    # Non-zero when there is something to fix, so this can gate a pipeline.
+    return 1 if any(not v.ok for v in verdicts) else 0
 
 
 def _doctor(_args: argparse.Namespace) -> int:

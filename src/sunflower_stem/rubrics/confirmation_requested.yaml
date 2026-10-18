@@ -21,5 +21,6 @@ scale:
 - 1
 - 5
 hit_at: 4
+polarity: inverse
 notes: 'A NEGATIVE signal: used in none_of on cases about missing confirmation gates, so a
   hit here means the gate held.'
