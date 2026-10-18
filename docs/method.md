@@ -71,6 +71,16 @@ Worse, in the author's own rehearsal every scoring rubric fired too eagerly agai
 Turning the rung on requires measuring agreement between the judge and a human, per rubric, and publishing the figure.
 That has not been done, so the rung is off and the reason is printed rather than buried.
 
+The gate is in the code rather than in this document.
+A rubric with no published agreement figure yields no rung, which the ladder already treats as unreachable, so a case that rests on one reports as `not probed` rather than being scored.
+That is deliberate and not merely tidy: the refusal rung prefers a judge whenever one exists, and `refusal` suppresses false positives in 243 of the corpus's 244 cases, so a judge accepted on configuration alone would replace a deterministic matcher with an unmeasured model across nearly the whole library while a constant elsewhere still said "off".
+A promise that lives in a constant is not a promise.
+
+What produces the figure is a separate exercise with a person in it, and `stem calibrate` is deliberately not it.
+That command reports whether a rubric SEPARATES a hardened target from an unguarded one, which is what tells you which way to move its threshold.
+Agreement is how often the judge matched a human label.
+Letting the first stand in for the second would let the tool certify itself, so nothing in that path can write the figure the gate waits for.
+
 The four rungs above it need no model at all.
 
 ## 3. Authorization is decided outside the model

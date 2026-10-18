@@ -8,7 +8,12 @@ cannot be used in a script.
 """
 from __future__ import annotations
 
-from sunflower_stem.cli import main
+import argparse
+import pathlib
+
+from sunflower_stem.cli import _build_parser, main
+
+REPO = pathlib.Path(__file__).resolve().parents[1]
 
 
 def _help(argv: list[str]) -> str:
@@ -80,3 +85,24 @@ def test_the_failure_line_does_not_precede_the_context_it_refers_to(capsys):
     captured = capsys.readouterr()
     assert "rubric library:" in captured.out
     assert "UNREACHABLE" in captured.err
+
+
+def test_the_readme_documents_exactly_the_commands_that_exist():
+    """The README publishes a command list and then says `stem doctor` is
+    authoritative if the two disagree. That is the right fallback and a poor
+    substitute for them agreeing: a reader meets the README first, and a command
+    missing from it is a capability nobody finds.
+
+    This repository has already shipped one readout that drifted from the code it
+    described, so the list is compared rather than trusted."""
+    readme = (REPO / "README.md").read_text()
+    block = readme.split("## Commands", 1)[1].split("```", 2)[1]
+    documented = {ln.split()[1] for ln in block.splitlines() if ln.startswith("stem ")}
+
+    sub = next(a for a in _build_parser()._actions
+               if isinstance(a, argparse._SubParsersAction))
+    advertised = set(sub.choices)
+
+    assert documented == advertised, (
+        f"README and --help disagree: only in README {documented - advertised}, "
+        f"only in --help {advertised - documented}")

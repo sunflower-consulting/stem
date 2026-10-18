@@ -57,6 +57,32 @@ jobs:
           grep -q "not probed" /tmp/demo.txt
           grep -q "matched" /tmp/demo.txt
 
+      # The rubric library is DATA, and `src/` held no non-Python file before it.
+      # So the failure mode this catches is specific and invisible locally: a
+      # missing `package-data` entry gives a wheel with no rubrics while a source
+      # checkout has all of them, and every test passes either way because the
+      # tests run from the checkout. Only an installed user would find out, by
+      # having the judge silently find nothing.
+      - name: the installed wheel carries the rubric library
+        run: |
+          stem judge | tee /tmp/judge.txt
+          grep -q "WITHHELD" /tmp/judge.txt
+          if grep -qE "rubric library: +0 " /tmp/judge.txt; then
+            echo "the wheel shipped no rubrics" >&2
+            exit 1
+          fi
+
+      # The dry calibration pass needs no endpoint and no GPU, which is exactly
+      # why it belongs here. It asserts the read-out can tell three different
+      # broken judges apart -- always-yes, always-no, and one that answers without
+      # a number -- and a clean result would mean the detector sees nothing. That
+      # third case once scored 0 and was reported TOO TIMID, sending an operator to
+      # lower a threshold that was never the problem.
+      - name: the calibration detector can tell the three failures apart
+        run: |
+          stem calibrate | tee /tmp/cal.txt
+          grep -q "the detector behaves" /tmp/cal.txt
+
       # The lab is the target the quickstart attacks, so "it starts and answers"
       # is part of the claim rather than an implementation detail.
       - name: the bundled lab serves with no model and no key

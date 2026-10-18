@@ -72,6 +72,8 @@ The ladder reports the strongest rung that fired, never the first. Reverse that 
 
 The judge rung is off because its agreement with human reviewers has not been measured. `stem doctor` says so rather than leaving it implied. The four rungs above it need no model at all.
 
+"Off" is enforced rather than promised, and the distinction matters more than it sounds. The refusal rung prefers a judge whenever one exists, and the corpus this tool consumes uses `refusal` to suppress false positives in 243 of its 244 cases - so configuring an endpoint would otherwise swap a deterministic matcher for an unmeasured model across almost the whole library, with no flag involved. Instead a rubric with no published agreement figure yields no rung at all, and a case resting on one reports as `not probed`. Every rubric stem ships is in that state.
+
 ### Authorization is decided outside the model
 
 The model proposes; a policy gate decides, by reading a signed scope document and nothing the request claims about itself. A fresh gate with no scope loaded refuses everything. Scope is an allowlist, so a target nobody wrote down is out of scope by construction. Routability is a separate check, so widening a range to reach a staging host does not also grant the public internet. Every refusal carries a machine-readable reason.
@@ -100,12 +102,16 @@ That is the comparison worth having, and it needs a control arm of its own: a gu
 ## Commands
 
 ```
-stem demo     run the built-in cases and their controls against the bundled target
-stem lab      serve the bundled vulnerable application on loopback
-stem doctor   report what this installation can and cannot prove
+stem demo       run the built-in cases and their controls against the bundled target
+stem lab        serve the bundled vulnerable application on loopback
+stem doctor     report what this installation can and cannot prove
+stem judge      report the judge rung's configuration and its rubric library
+stem calibrate  check whether each judge rubric's threshold is calibrated
 ```
 
 `stem doctor` is authoritative. If it disagrees with this README, believe it.
+
+`stem calibrate` needs no endpoint and no GPU to be useful. With nothing configured it runs a dry pass against three constant judges - one that always says yes, one that always says no, and one that answers the question while leaving the number out - and the read-out has to report each of those as a different fault. That is the inverse of the usual success condition, and it is the point: a detector that cannot tell a judge that disagreed from one that never answered will send you to tune the wrong thing, and a live run cannot reveal that because a live run has no ground truth.
 
 `stem lab` exposes no `--host`. It is an application built to be exploitable, and a host option is how one ends up answering on a laptop's wifi address. Forwarding a port is still possible and is then a decision with a person attached to it.
 
