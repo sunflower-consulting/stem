@@ -27,6 +27,30 @@ judge disagreed" from "the judge did not answer" sends you to tune the wrong
 thing, and you cannot discover that from a live run because a live run has no
 ground truth. The dry pass is the ground truth.
 
+WHAT A LIVE PASS AGAINST THIS TARGET IS AND IS NOT WORTH.
+
+The replies come from the lab's SCRIPTED brain, so they are a small deterministic
+set written alongside the cases rather than model output. That is better than it
+sounds and worse than a real rehearsal, and the difference is worth stating because
+it bounds every number this command prints.
+
+Better than it sounds: the replies are purpose-built for these cases, so several
+rubrics get genuine signal. At `strong` the bot answers "I won't share my
+instructions or any internal values, whoever is asking", which is a real refusal
+for `refusal` to find; at `none` it answers "Absolutely -- we guarantee a full
+refund at any time, no questions asked", which is a real policy overcommitment.
+
+Worse than a real rehearsal: it is roughly three dozen replies, the content rubrics
+see thin examples of what they are asking about, and no reply exhibits the
+variability a live model produces. So a verdict here is a SANITY CHECK of a rubric
+against designed examples -- enough to catch a rubric that fires on everything or
+nothing, which is what most mis-set thresholds do -- and not an estimate of how
+that rubric will behave against a real assistant.
+
+For the stronger version, `stem lab --model` drives the target with a real model,
+and that is a different and more expensive run: on a 16 GB card a target model and
+a judge model evict each other, at a measured 12 to 19 seconds per reload.
+
 WHAT THIS DOES NOT PRODUCE.
 
 An agreement figure. `Judge.for_rubric` withholds any rubric without one, and that

@@ -70,43 +70,63 @@ _REASONING_KEYS = ("reasoning", "reasoning_content", "thinking")
 #: Parameters that an OpenAI-compatible server ACCEPTS AND IGNORES, which is worse
 #: than rejecting them.
 #:
-#: Measured against Ollama 0.40.5 with qwen3:8b, same prompt, on the two endpoints
-#: it serves:
+#: All of the below is measured against Ollama 0.40.5 with qwen3:8b, one prompt.
+#: Across the two endpoints it serves:
 #:
-#:     /v1/chat/completions   baseline      327 completion tokens, 1387 chars of reasoning
-#:     /v1/chat/completions   think=False   253 completion tokens, 1012 chars of reasoning
-#:     /api/chat              baseline      439 eval tokens,       1857 chars of thinking
-#:     /api/chat              think=False    13 eval tokens,          0 chars of thinking
+#:     /v1/chat/completions   baseline      327 completion tokens, 1387 chars reasoning
+#:     /v1/chat/completions   think=False   253 completion tokens, 1012 chars reasoning
+#:     /api/chat              baseline      439 eval tokens,       1857 chars thinking
+#:     /api/chat              think=False    13 eval tokens,          0 chars thinking
 #:
-#: So the lever is real and worth about 34x the generated tokens, and it does
+#: So the lever is real and worth roughly 34x the generated tokens, and it does
 #: nothing on the endpoint this transport speaks. A caller passing it would get a
-#: thinking model, a token bill, and the belief they had turned thinking off.
+#: thinking model, the token bill, and the belief they had turned thinking off.
 #:
 #: That belief is expensive here specifically. Thinking is what makes a judge run
 #: out of output budget before it reaches a verdict, which is the exact condition
 #: `ModelReply.truncated` exists to catch -- so "I disabled thinking" and "my judge
-#: keeps truncating" would be held at the same time, and the second would be
-#: blamed on max_tokens.
+#: keeps truncating" would be held at the same time, and the second blamed on
+#: max_tokens.
 #:
-#: Refused rather than warned. The fix is one line in the model's own Modelfile, and
-#: an error that names it is how a caller finds that out in seconds instead of
-#: after a run.
+#: TWO FIXES WERE TRIED AND NEITHER WORKS, which is why the message below does not
+#: offer one:
+#:
+#:   - `PARAMETER think false` in a Modelfile: `ollama create` fails outright with
+#:     "unknown parameter 'think'". It is a request option, not a model parameter.
+#:   - Qwen3's `/no_think` soft switch through this endpoint: appended to the user
+#:     turn it measured 410 completion tokens against a 357 baseline, and in a
+#:     system turn 210, with 849 to 1718 chars of reasoning throughout. Within
+#:     noise, and in the wrong direction half the time.
+#:
+#: So on this endpoint, for this model, thinking cannot be switched off. The
+#: practical answer is to budget for it rather than defeat it -- which
+#: `DEFAULT_MAX_TOKENS` at 8192 already does, against a measured 1522-char
+#: reasoning blob -- or to choose a judge model that does not think.
+#:
+#: Refused rather than warned, because the failure is a silent belief and an error
+#: that carries the measurement is how a caller learns it in seconds.
 IGNORED_BY_OPENAI_SHAPE = {
-    "think": ("Ollama accepts `think` on /v1/chat/completions and ignores it; "
-              "measured 253 vs 327 completion tokens, still 1012 chars of "
-              "reasoning. Disable it where the model is defined -- `PARAMETER "
-              "think false` in its Modelfile -- so every caller inherits it."),
+    "think": ("Ollama accepts `think` on /v1/chat/completions and ignores it: "
+              "measured 253 completion tokens against a 327 baseline, still 1012 "
+              "chars of reasoning. It works only on the native /api/chat (13 "
+              "tokens, no thinking), it is NOT a Modelfile parameter (`ollama "
+              "create` rejects it), and Qwen3's /no_think switch is not honoured "
+              "here either. Budget for thinking instead, or pick a judge model "
+              "that does not think."),
     "chat_template_kwargs": (
-        "accepted and ignored on this endpoint; measured 275 completion tokens "
-        "against a 327 baseline, still 1082 chars of reasoning. Set the model's "
-        "own template or parameters instead."),
+        "accepted and ignored on this endpoint: measured 275 completion tokens "
+        "against a 327 baseline, still 1082 chars of reasoning. Ollama does not "
+        "pass it to the template."),
     "reasoning_effort": (
-        "an OpenAI-API parameter that Ollama does not implement. Pin the "
-        "reasoning level in the model's Modelfile."),
+        "an OpenAI-API parameter Ollama does not implement; measured "
+        "indistinguishable from the baseline. There is no endpoint-side lever for "
+        "this model."),
 }
 
+
 #: Enough for a verbose reasoning reply, bounded so a misbehaving endpoint cannot
-#: exhaust memory.
+#: exhaust memory. Sized against a measured 1522-char reasoning blob with room to
+#: spare, since thinking cannot be switched off on this endpoint.
 _MAX_RESPONSE_BYTES = 1_048_576
 
 
