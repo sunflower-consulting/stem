@@ -11,6 +11,7 @@ import argparse
 import sys
 
 from sunflower_stem import __version__
+from sunflower_stem.judge import ENDPOINT_ENV, MODEL_ENV
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -61,6 +62,25 @@ def _build_parser() -> argparse.ArgumentParser:
              "needs no model, no GPU and no network, which is what makes a run "
              "reproducible and what makes the quickstart keyless.")
     lab.set_defaults(func=_lab)
+
+    judge = sub.add_parser(
+        "judge", help="report the judge rung's configuration and rubric library",
+        description="What the judge rung would do if a case asked for it. Reads "
+                    "the rubric library, resolves the configured endpoint, and "
+                    "says per rubric whether it is reachable. The rung is off "
+                    "until a per-rubric agreement figure is published, so this "
+                    "normally reports every rubric as withheld, which is the "
+                    "honest state rather than a fault.")
+    judge.add_argument("--endpoint", default="",
+                       help=f"OpenAI-compatible base URL; overrides ${ENDPOINT_ENV}.")
+    judge.add_argument("--model", default="",
+                       help=f"served model name; overrides ${MODEL_ENV}.")
+    judge.add_argument("--probe", action="store_true",
+                       help="also reach the endpoint. This is the only part of "
+                            "this command that touches the network, which is why "
+                            "it is a flag: `stem doctor` and the listing below "
+                            "must both work offline.")
+    judge.set_defaults(func=_judge)
     return p
 
 
@@ -96,6 +116,65 @@ def _lab(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         srv.shutdown()
         print()
+    return 0
+
+
+def _judge(args: argparse.Namespace) -> int:
+    """Say what the judge rung would do, and why it will probably do nothing."""
+    import os
+
+    from sunflower_stem.judge import LOAD_ERRORS, load_rubrics
+    from sunflower_stem.modelcall import ChatTransport
+
+    endpoint = args.endpoint or os.environ.get(ENDPOINT_ENV, "").strip()
+    model = args.model or os.environ.get(MODEL_ENV, "").strip()
+    rubrics = load_rubrics()
+
+    print(f"rubric library:   {len(rubrics)} loaded from the installed package")
+    for name, err in LOAD_ERRORS:
+        print(f"  ! {name}: {err}")
+    calibrated = sorted(r.id for r in rubrics.values() if r.calibrated)
+    print(f"calibrated:       {len(calibrated)} of {len(rubrics)}"
+          f"{': ' + ', '.join(calibrated) if calibrated else ''}")
+    if not calibrated:
+        # Said plainly, because a reader who points stem at a working endpoint and
+        # sees every case report `not probed` will otherwise think it is broken.
+        print("                  every rubric is WITHHELD: a rung whose agreement "
+              "with a human")
+        print("                  has never been measured scores nothing, so a case "
+              "resting on")
+        print("                  one reports as not probed rather than as a pass.")
+    print(f"endpoint:         {endpoint or f'not configured (set ${ENDPOINT_ENV})'}")
+    print(f"model:            {model or f'not configured (set ${MODEL_ENV})'}")
+
+    if not args.probe:
+        return 0
+    # Flushed before every stderr write below. Redirected stdout is block-buffered
+    # while stderr is not, so without this the failure line lands ABOVE the listing
+    # it refers to and reads as though it came first. `_lab` carries the same
+    # flushing for the same reason.
+    if not (endpoint and model):
+        sys.stdout.flush()
+        print("\nnothing to probe: configure an endpoint and a model first.",
+              file=sys.stderr)
+        return 2
+    result = ChatTransport(endpoint, model).probe()
+    if not result.get("ok"):
+        sys.stdout.flush()
+        print(f"\nprobe:            UNREACHABLE  {result.get('error', '')}",
+              file=sys.stderr)
+        return 1
+    served = result.get("served_models") or []
+    print(f"\nprobe:            reachable in {result.get('latency_ms')} ms, "
+          f"{len(served)} model(s) served")
+    if model not in served:
+        print(f"                  ! {model!r} is not in the listing")
+    # Named rather than implied: on the reference box a server launched outside its
+    # tray app lists every model and returns HTTP 500 on the largest one. A listing
+    # is what succeeds while the model you need is the one thing that is broken.
+    print("                  a listing is not a generation: only a completion "
+          "against the")
+    print("                  model you need proves it can run.")
     return 0
 
 

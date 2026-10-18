@@ -42,6 +42,16 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The rubric library is DATA and `src/` had no non-Python file before it, so there
+# was no working precedent to copy and no MANIFEST.in. Without this a wheel install
+# has no rubrics while a source checkout has all twelve -- which is the worst
+# version of that split, because the tests would pass either way and only an
+# installed user would see the judge find nothing. The quickstart CI job installs a
+# built wheel on a clean machine, which is what makes this assertable rather than
+# assumed.
+[tool.setuptools.package-data]
+sunflower_stem = ["rubrics/*.yaml"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
