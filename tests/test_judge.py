@@ -21,6 +21,8 @@ from __future__ import annotations
 import pytest
 
 from sunflower_stem.judge import (
+    MIN_AGREEMENT,
+    MIN_LABELS,
     Agreement,
     Judge,
     JudgeRefused,
@@ -274,3 +276,74 @@ def test_the_prompt_shows_the_reply_and_never_the_attack():
     sent = "\n".join(m.content for m in transport.calls[0])
     assert "THE-REPLY-TEXT" in sent
     assert isinstance(transport.calls[0][0], Message)
+
+
+# --- the agreement figure, which is the only thing that opens the gate -----------
+
+def test_a_figure_that_cannot_be_true_is_rejected():
+    """`agreed > labels` is a transposition, and it yields a rate above 1.0 that
+    passes every threshold below it. This is the one field in the package whose
+    contents decide whether a model may score a case, so it is checked rather than
+    trusted."""
+    with pytest.raises(ValueError, match="exceeds labels"):
+        Agreement(labels=10, agreed=11, judge_model="m")
+    with pytest.raises(ValueError, match="negative"):
+        Agreement(labels=-1, agreed=0, judge_model="m")
+
+
+def test_a_figure_must_name_the_judge_it_was_measured_against():
+    """A threshold tuned against one model is a fact about that model's judgement.
+    A figure with no model attached cannot be reproduced or invalidated, so it is
+    not a figure."""
+    with pytest.raises(ValueError, match="judge model"):
+        Agreement(labels=40, agreed=37, judge_model="   ")
+
+
+def test_a_figure_from_too_few_labels_does_not_open_the_gate():
+    """1/1 is a perfect score and says nothing. Before this it would have opened
+    the gate on all twelve rubrics at once.
+
+    Twenty is where the arithmetic starts to support the claim rather than a round
+    number: against this repo's own wilson_interval at alpha=0.05, a 0.80 lower
+    bound needs 20 of 20 at n=20."""
+    perfect_but_tiny = Agreement(labels=1, agreed=1, judge_model="m")
+    r = _rubric(agreement=perfect_but_tiny)
+    assert not r.calibrated
+    assert f"{MIN_LABELS}" in r.withheld_because
+
+
+def test_a_measured_but_poor_figure_does_not_open_the_gate():
+    """A rubric the judge and a human disagree on most of the time does not produce
+    weak evidence, it produces noise with a number attached, and the report then
+    spends a reviewer's attention on verdicts they will reject."""
+    r = _rubric(agreement=Agreement(labels=40, agreed=12, judge_model="m"))
+    assert not r.calibrated
+    assert "below the" in r.withheld_because
+
+
+def test_a_sufficient_figure_opens_the_gate():
+    """The negative control. A floor nothing can clear is a deletion."""
+    r = _calibrated()
+    assert r.calibrated
+    assert r.withheld_because == ""
+    assert r.agreement.rate >= MIN_AGREEMENT
+
+
+def test_the_three_withheld_reasons_are_distinguishable():
+    """They send a reader to three different places: measure it, measure more of
+    it, or fix the rubric. "uncalibrated" sends them nowhere."""
+    none = _rubric().withheld_because
+    thin = _rubric(agreement=Agreement(labels=2, agreed=2, judge_model="m")).withheld_because
+    poor = _rubric(agreement=Agreement(labels=40, agreed=4, judge_model="m")).withheld_because
+    assert len({none, thin, poor}) == 3
+    assert all(r for r in (none, thin, poor))
+
+
+def test_the_judge_records_why_each_rubric_was_withheld():
+    """"Uncalibrated" is not actionable; "measured on only 2 labels" tells an
+    operator what to do next."""
+    judge = Judge(ScriptedTransport("j", "{}"),
+                  rubrics={"refusal": _rubric(
+                      agreement=Agreement(labels=2, agreed=2, judge_model="m"))})
+    assert judge.for_rubric("refusal") is None
+    assert "2 labels" in judge.withheld["refusal"]

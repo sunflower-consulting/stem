@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 from sunflower_stem.modelcall import (
+    IGNORED_BY_OPENAI_SHAPE,
     ChatTransport,
     Message,
     ModelCallError,
@@ -220,3 +221,48 @@ def test_the_scripted_transport_records_what_it_was_asked(server):
     t.complete([Message(role="system", content="s"), Message(role="user", content="u")])
     assert [m.content for m in t.calls[0]] == ["s", "u"]
     assert t.complete([Message(role="user", content="again")]).text.startswith('{"score": 5')
+
+
+# --- parameters that are accepted and ignored, which is worse than rejected ------
+
+@pytest.mark.parametrize("name", sorted(IGNORED_BY_OPENAI_SHAPE))
+def test_a_parameter_this_endpoint_ignores_is_refused_rather_than_sent(server, name):
+    """Measured against Ollama 0.40.5 with qwen3:8b: `think=False` on
+    /v1/chat/completions gives 253 completion tokens against a 327 baseline and
+    still 1012 characters of reasoning, while the same flag on /api/chat gives 13
+    tokens and none. The lever is worth about 34x the generated tokens and does
+    nothing on the endpoint this transport speaks.
+
+    Refused rather than warned, because the belief is the expensive part: thinking
+    is what makes a judge run out of output budget before reaching a verdict, so
+    "I disabled thinking" and "my judge keeps truncating" would otherwise be held
+    at the same time and the second blamed on max_tokens."""
+    srv, h = server
+    h.script.append((200, _ok()))
+    with pytest.raises(ModelCallError, match="does nothing"):
+        _transport(srv).complete([Message(role="user", content="q")], **{name: False})
+    assert not h.seen, "it must not reach the wire at all"
+
+
+def test_the_refusal_names_the_fix_and_not_just_the_problem():
+    """A refusal a caller cannot act on gets worked around. The fix is one line in
+    the model's own Modelfile, so the message says so."""
+    assert "Modelfile" in IGNORED_BY_OPENAI_SHAPE["think"]
+
+
+def test_the_same_parameter_in_defaults_is_refused_too(server):
+    """Constructing a transport with it is the likelier mistake, because it looks
+    like configuration rather than a per-call flag."""
+    srv, _h = server
+    with pytest.raises(ModelCallError, match="does nothing"):
+        _transport(srv, defaults={"think": False}).complete(
+            [Message(role="user", content="q")])
+
+
+def test_an_ordinary_sampling_parameter_still_reaches_the_wire(server):
+    """The guard is a named list, not a filter on anything unfamiliar. Blocking
+    temperature would make the transport unusable."""
+    srv, h = server
+    h.script.append((200, _ok()))
+    _transport(srv).complete([Message(role="user", content="q")], temperature=0.2)
+    assert h.seen[0][2]["temperature"] == 0.2

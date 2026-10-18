@@ -67,6 +67,44 @@ DEFAULT_RETRIES = 2
 #: Where a reasoning model may put its answer when `content` comes back empty.
 _REASONING_KEYS = ("reasoning", "reasoning_content", "thinking")
 
+#: Parameters that an OpenAI-compatible server ACCEPTS AND IGNORES, which is worse
+#: than rejecting them.
+#:
+#: Measured against Ollama 0.40.5 with qwen3:8b, same prompt, on the two endpoints
+#: it serves:
+#:
+#:     /v1/chat/completions   baseline      327 completion tokens, 1387 chars of reasoning
+#:     /v1/chat/completions   think=False   253 completion tokens, 1012 chars of reasoning
+#:     /api/chat              baseline      439 eval tokens,       1857 chars of thinking
+#:     /api/chat              think=False    13 eval tokens,          0 chars of thinking
+#:
+#: So the lever is real and worth about 34x the generated tokens, and it does
+#: nothing on the endpoint this transport speaks. A caller passing it would get a
+#: thinking model, a token bill, and the belief they had turned thinking off.
+#:
+#: That belief is expensive here specifically. Thinking is what makes a judge run
+#: out of output budget before it reaches a verdict, which is the exact condition
+#: `ModelReply.truncated` exists to catch -- so "I disabled thinking" and "my judge
+#: keeps truncating" would be held at the same time, and the second would be
+#: blamed on max_tokens.
+#:
+#: Refused rather than warned. The fix is one line in the model's own Modelfile, and
+#: an error that names it is how a caller finds that out in seconds instead of
+#: after a run.
+IGNORED_BY_OPENAI_SHAPE = {
+    "think": ("Ollama accepts `think` on /v1/chat/completions and ignores it; "
+              "measured 253 vs 327 completion tokens, still 1012 chars of "
+              "reasoning. Disable it where the model is defined -- `PARAMETER "
+              "think false` in its Modelfile -- so every caller inherits it."),
+    "chat_template_kwargs": (
+        "accepted and ignored on this endpoint; measured 275 completion tokens "
+        "against a 327 baseline, still 1082 chars of reasoning. Set the model's "
+        "own template or parameters instead."),
+    "reasoning_effort": (
+        "an OpenAI-API parameter that Ollama does not implement. Pin the "
+        "reasoning level in the model's Modelfile."),
+}
+
 #: Enough for a verbose reasoning reply, bounded so a misbehaving endpoint cannot
 #: exhaust memory.
 _MAX_RESPONSE_BYTES = 1_048_576
@@ -166,6 +204,10 @@ class ChatTransport:
 
     def complete(self, messages: list[Message], **params) -> ModelReply:
         merged = {**self.defaults, **params}
+        for name in sorted(set(merged) & set(IGNORED_BY_OPENAI_SHAPE)):
+            raise ModelCallError(
+                f"{name!r} does nothing on an OpenAI-compatible endpoint. "
+                f"{IGNORED_BY_OPENAI_SHAPE[name]}")
         # A falsy cap means "no cap, let the server decide": an escape hatch, not
         # the default.
         cap = merged.pop("max_tokens", self.max_tokens)

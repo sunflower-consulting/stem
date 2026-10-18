@@ -54,7 +54,7 @@ import re
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from sunflower_stem.evidence.store import EvidenceStore
 from sunflower_stem.modelcall import Message
@@ -94,6 +94,26 @@ def endpoint_configured() -> bool:
     return bool(os.environ.get(ENDPOINT_ENV, "").strip())
 
 
+#: Fewest human labels a figure may rest on and still open the gate.
+#:
+#: Twenty because below it the arithmetic cannot support the claim rather than
+#: because it is a round number: against this repo's own `wilson_interval` at
+#: alpha=0.05, a 0.80 lower bound needs 20 of 20 at n=20 and 29 of 30 at n=30. So
+#: twenty is already the point where a single disagreement is visible, and a figure
+#: of 1/1 -- which would otherwise open the gate on twelve rubrics at once -- says
+#: nothing at all.
+MIN_LABELS = 20
+
+#: Agreement below which the rung stays withheld even though it WAS measured.
+#:
+#: A rubric the judge and a human disagree on half the time does not produce weak
+#: evidence, it produces noise with a number attached, and the report then spends a
+#: reviewer's attention on verdicts they will reject. Reported as its own state so
+#: the readout can say "measured at 12/40, below the floor", which is actionable
+#: where "uncalibrated" is not.
+MIN_AGREEMENT = 0.8
+
+
 class Agreement(BaseModel):
     """How often this rubric agreed with a human, and on what.
 
@@ -115,9 +135,38 @@ class Agreement(BaseModel):
     #: ISO date. A calibration ages, and a reader has to be able to see how much.
     measured_on: str = ""
 
+    @model_validator(mode="after")
+    def _coherent(self) -> Agreement:
+        """A figure that cannot be true must not open the gate.
+
+        `agreed > labels` is a transposition or a typo, and it yields a rate above
+        1.0 that passes every threshold below. This is the one field in the package
+        whose contents decide whether a model is allowed to score a case, so it is
+        checked rather than trusted.
+        """
+        if self.labels < 0 or self.agreed < 0:
+            raise ValueError("an agreement figure cannot be negative")
+        if self.agreed > self.labels:
+            raise ValueError(
+                f"agreed ({self.agreed}) exceeds labels ({self.labels}): a rate "
+                f"above 1.0 would pass every threshold")
+        if not self.judge_model.strip():
+            raise ValueError("an agreement figure must name the judge model it was "
+                             "measured against, or it cannot be reproduced")
+        return self
+
     @property
     def rate(self) -> float:
         return (self.agreed / self.labels) if self.labels else 0.0
+
+    @property
+    def sufficient(self) -> bool:
+        """Whether this figure is strong enough to open the gate."""
+        return self.labels >= MIN_LABELS and self.rate >= MIN_AGREEMENT
+
+    def __str__(self) -> str:
+        return (f"{self.agreed}/{self.labels} against {self.judge_model}"
+                + (f" on {self.measured_on}" if self.measured_on else ""))
 
 
 class Rubric(BaseModel):
@@ -169,7 +218,26 @@ class Rubric(BaseModel):
 
     @property
     def calibrated(self) -> bool:
-        return self.agreement is not None
+        """Measured, and measured well enough to act on."""
+        return self.agreement is not None and self.agreement.sufficient
+
+    @property
+    def withheld_because(self) -> str:
+        """Why this rubric yields no rung, in words a reader can act on.
+
+        Three distinguishable states, because they send a reader to three different
+        places: measure it, measure more of it, or fix the rubric.
+        """
+        if self.agreement is None:
+            return "no agreement figure has been measured"
+        a = self.agreement
+        if a.labels < MIN_LABELS:
+            return (f"measured on only {a.labels} labels; {MIN_LABELS} is the fewest "
+                    f"that can support the claim")
+        if a.rate < MIN_AGREEMENT:
+            return (f"agreed with a human on {a.agreed}/{a.labels} "
+                    f"({a.rate:.0%}), below the {MIN_AGREEMENT:.0%} floor")
+        return ""
 
     def content_hash(self) -> str:
         """Stable hash of the rubric's content.
@@ -298,6 +366,9 @@ class Judge:
         #: report says which, because "scored on 1 of 2 oracles" is only
         #: actionable if a reader can see which one was lost.
         self.uncalibrated: set[str] = set()
+        #: Rubric id -> why it was withheld. "uncalibrated" is not actionable;
+        #: "measured on only 4 labels" tells an operator what to do next.
+        self.withheld: dict[str, str] = {}
 
     @property
     def model_id(self) -> str:
@@ -342,6 +413,7 @@ class Judge:
             # it reports as not probed rather than being scored by a model whose
             # agreement with a human has never been measured.
             self.uncalibrated.add(rubric_id)
+            self.withheld[rubric_id] = rubric.withheld_because
             return None
         return _RubricOracle(self, rubric)
 
@@ -378,8 +450,7 @@ class Judge:
                   "calibrated": rubric.calibrated,
                   "question_source": rubric.question_source}
         if rubric.agreement is not None:
-            detail["agreement"] = (f"{rubric.agreement.agreed}/{rubric.agreement.labels} "
-                                   f"against {rubric.agreement.judge_model}")
+            detail["agreement"] = str(rubric.agreement)
         refs: list[str] = []
         if self.store is not None:
             try:
