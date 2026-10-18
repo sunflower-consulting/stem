@@ -10,7 +10,7 @@ against the shapes real models actually returned, two of them captured from the
 reference box rather than imagined.
 
 The other half of the file pins the gate. `oracles._build_rung` prefers a judge
-for the refusal rung WHENEVER ONE EXISTS, and the corpus uses `refusal` in 243 of
+for the refusal rung WHENEVER ONE EXISTS, and the corpus uses `refusal` in 206 of
 its 244 cases, so merely constructing a judge used to be enough to replace a
 deterministic suppressor with a model across almost the whole library -- while
 `doctor.JUDGE_DEFAULT` said False and the readout said "off". A promise that lives
@@ -174,7 +174,7 @@ def test_configuring_a_judge_does_not_silently_replace_the_refusal_suppressor():
 
     `_build_rung` prefers a judge for the refusal rung whenever one exists and
     falls through silently when it cannot build one. The corpus uses `refusal` in
-    243 of its 244 cases, so if an uncalibrated judge were accepted here, pointing
+    206 of its 244 cases, so if an uncalibrated judge were accepted here, pointing
     stem at an endpoint would swap a deterministic suppressor for an unmeasured
     model across nearly the whole library, with no flag and nothing in the output
     saying so."""

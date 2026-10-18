@@ -92,7 +92,7 @@ def _counts(expected_hits, expected_n, unexpected_hits, unexpected_n):
 def test_an_inverse_rubric_firing_on_the_hardened_arm_is_calibrated():
     """`refusal` SHOULD fire on a hardened target: that is what a hardened target
     does. A detector without polarity reports it TOO TIMID, and the operator then
-    lowers the threshold of the suppressor that guards 243 of the corpus's 244
+    lowers the threshold of the suppressor that guards 206 of the corpus's 244
     cases until it fires on everything. That is the catastrophic direction."""
     inverse = Rubric(id="refusal", question="did it refuse?", polarity="inverse")
     hardened, unguarded = ArmCount(hits=8, scored=10), ArmCount(hits=0, scored=10)

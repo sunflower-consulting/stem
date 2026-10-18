@@ -72,7 +72,7 @@ The ladder reports the strongest rung that fired, never the first. Reverse that 
 
 The judge rung is off because its agreement with human reviewers has not been measured. `stem doctor` says so rather than leaving it implied. The four rungs above it need no model at all.
 
-"Off" is enforced rather than promised, and the distinction matters more than it sounds. The refusal rung prefers a judge whenever one exists, and the corpus this tool consumes uses `refusal` to suppress false positives in 243 of its 244 cases - so configuring an endpoint would otherwise swap a deterministic matcher for an unmeasured model across almost the whole library, with no flag involved. Instead a rubric with no published agreement figure yields no rung at all, and a case resting on one reports as `not probed`. Every rubric stem ships is in that state.
+"Off" is enforced rather than promised, and the distinction matters more than it sounds. The refusal rung prefers a judge whenever one exists, and the corpus this tool consumes uses `refusal` to suppress false positives in 206 of its 244 cases (measured at seed-vault 4855589) - so configuring an endpoint would otherwise swap a deterministic matcher for an unmeasured model across almost the whole library, with no flag involved. Instead a rubric with no published agreement figure yields no rung at all, and a case resting on one reports as `not probed`. Every rubric stem ships is in that state.
 
 ### Authorization is decided outside the model
 

@@ -4,8 +4,9 @@ Some of the OWASP LLM risks cannot be scored deterministically, and pretending
 otherwise is how an assessment ends up measuring only the easy half. "Did the bot
 refuse?", "is this harmful?", "is this a fabricated citation?" have no canary and
 no regex. The honest options are to declare them out of scope or to have a model
-judge them. Measured against the corpus this consumes: 41 of its 244 cases can be
-scored by nothing else, and the `refusal` rubric it suppresses with appears in 243.
+judge them. Measured against the corpus this consumes, at seed-vault 4855589: 41 of
+its 244 cases can be scored by nothing else, 62 reference a judge rubric at all,
+and the `refusal` rubric it suppresses with appears in 206.
 
 Four things keep it from undermining the rest.
 
@@ -26,7 +27,7 @@ Four things keep it from undermining the rest.
    one that needed building rather than porting, and the reason is in
    `oracles._build_rung`: the refusal rung prefers a judge WHENEVER ONE EXISTS and
    falls through silently when it does not. So constructing a judge at all would
-   have replaced the deterministic suppressor with a model across 243 of 244 cases,
+   have replaced the deterministic suppressor with a model across 206 of 244 cases,
    with no flag involved, while `doctor.JUDGE_DEFAULT` sat at False and the readout
    said "off". A promise that lives in a constant is not a promise. `for_rubric`
    returns `None` for a rubric with no published agreement figure, which the ladder
@@ -198,8 +199,8 @@ class Rubric(BaseModel):
     #: Without this field a detector comparing the two arms reports a perfectly
     #: working `refusal` suppressor as TOO TIMID, and the operator then lowers its
     #: threshold until it fires on everything. That is the catastrophic direction:
-    #: `refusal` suppresses 243 of the corpus's 244 cases, so a suppressor tuned to
-    #: fire on anything hides the whole library.
+    #: `refusal` suppresses 206 of the corpus's 244 cases, so a suppressor tuned to
+    #: fire on anything hides most of the library.
     polarity: str = "positive"
     #: The published agreement figure, or absent. Absent means this rubric is
     #: UNREACHABLE rather than permissive: see `Judge.for_rubric`.

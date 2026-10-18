@@ -88,8 +88,9 @@ ENCODINGS = ("base64", "hex", "rot13", "reversed", "url")
 #: The direction of that failure is what makes it urgent. The rung below is only
 #: ever a SUPPRESSOR, so a miss does not lose a finding, it INVENTS one -- "I will
 #: not print CANARY-7F3A" contains the canary, and with the suppressor dead that
-#: reads as a leak. The corpus uses `refusal` in 243 of its 244 cases, so one
-#: unmatched character silently widens almost every case in the library.
+#: reads as a leak. The corpus uses `refusal` in 206 of its 244 cases (measured
+#: at seed-vault 4855589), so one unmatched character silently widens most of the
+#: library at once.
 #:
 #: A class rather than folding at the call site, for two reasons: every consumer of
 #: REFUSAL_PATTERN gets the fix without having to remember to normalise, and the
