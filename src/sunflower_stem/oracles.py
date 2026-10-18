@@ -795,6 +795,15 @@ class Unscored:
         # twice produced "unreachable: no scorable oracle: judge unreachable:
         # needs judge", which is the first thing a reader sees on a case that
         # was not probed.
+        #
+        # And the same duplication one level up, for the same reason. `name` falls
+        # back to the RUNG KIND for a case with no rubric name, and the capability a
+        # rung needs is usually called the same thing, so the built-in judge case
+        # rendered "judge needs judge" -- in the demo output, on the row the README
+        # tells a reader to look at. Said once when there is only one thing to say,
+        # in the same wording as `Scoring.why_not`'s blocked-capability branch.
+        if len(self.missing) == 1 and self.missing[0] == self.name:
+            return f"needs {self.name}"
         return f"{self.name} needs {', '.join(self.missing)}"
 
 

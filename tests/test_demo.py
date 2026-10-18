@@ -139,3 +139,28 @@ def test_the_arm_ratio_helper_never_raises(cell, expected):
     """It parses a rendered table cell, so it has to tolerate anything the table
     can hold rather than crash the summary that follows the numbers."""
     assert _ratio(cell) == expected
+
+
+def test_the_readme_quotes_the_not_probed_reason_the_demo_actually_prints():
+    """The README prints a sample run and then tells the reader to look at the last
+    row: "Nothing could score it, so it says so and carries the reason." That
+    sentence is only worth anything if the reason in the README is the reason the
+    tool prints.
+
+    It has already drifted once. The row read "no scorable oracle: judge needs
+    judge", because the oracle's name falls back to the rung kind and the
+    capability it needs is called the same thing -- so the one row the README
+    points at was the one carrying the clumsiest string in the output."""
+    import io
+    import pathlib
+    from contextlib import redirect_stdout
+
+    readme = (pathlib.Path(__file__).resolve().parents[1] / "README.md").read_text()
+    quoted = next(ln.strip() for ln in readme.splitlines()
+                  if "no scorable oracle" in ln)
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        run(trials=1)
+    assert quoted in buf.getvalue(), (
+        f"the README quotes {quoted!r}, which the demo does not print")
