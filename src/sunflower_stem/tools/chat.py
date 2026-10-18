@@ -24,7 +24,7 @@ import json
 import re
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from sunflower_stem.nethttp import connect
 from sunflower_stem.policy.decision import ToolRequest, host_of
@@ -215,6 +215,16 @@ class ChatTurn(BaseModel):
     expect: str = ""
 
 
+#: Where a case's turns came from. The measurement path accepts only AUTHORED.
+#:
+#: A model that searches for a working sequence is a different mode from measuring
+#: one, and the two must not share a path: if each trial sends different text then
+#: ten trials are not ten samples of one thing, and the control arm has nothing
+#: fixed to be a twin of. The rate and the p-value stop meaning anything.
+AUTHORED = "authored"
+GENERATED = "generated"
+
+
 class ChatCase(BaseModel):
     """A chat test case with turns, a ranked oracle, and its own trial budget.
 
@@ -231,6 +241,12 @@ class ChatCase(BaseModel):
     five" are different claims and a single global threshold would misreport both.
     And ``needs``, which is what keeps the denominator honest.
     """
+
+    #: `extra="forbid"`, matching the gate-facing models in `schemas/target.py`.
+    #: Without it an unknown key in a case file is silently IGNORED, so a typo in a
+    #: field name reads as a case that simply did not set it -- and a case file
+    #: writing `turns_origin:` would look accepted while doing nothing.
+    model_config = ConfigDict(extra="forbid")
 
     id: str
     #: OWASP LLM risk, 2025 numbering: "LLM01".."LLM10".
@@ -342,6 +358,34 @@ class ChatCase(BaseModel):
     #: Public references for the technique, carried into the report so a finding
     #: cites the literature rather than asserting itself.
     references: list[str] = Field(default_factory=list)
+
+    # ----- where the turns came from, which data may not claim ------------------
+    #
+    # A PrivateAttr rather than a field, and that is the whole mechanism. A declared
+    # field would be settable from a case file, so a generated case could write
+    # `turns_origin: authored` and walk through the guard that exists to stop it. A
+    # private attribute is not part of the model's input at all, and `extra="forbid"`
+    # above means a file that tries to set it is REJECTED rather than ignored.
+    #
+    # The honest limit: within one process this is a reassignable attribute, so it
+    # stops a careless line and not a determined one. What it does close is the route
+    # a human actually takes -- a file on disk -- and that is the route a draft
+    # promoted without review would arrive by.
+    _turns_origin: str = PrivateAttr(default=AUTHORED)
+
+    @property
+    def turns_origin(self) -> str:
+        return self._turns_origin
+
+    def as_generated(self) -> ChatCase:
+        """A copy of this case marked as having model-written turns.
+
+        A copy rather than a mutation so a discovery loop cannot mark the library
+        it drew its exemplar from.
+        """
+        clone = self.model_copy(deep=True)
+        clone._turns_origin = GENERATED
+        return clone
 
 
 def _c(**kw) -> ChatCase:

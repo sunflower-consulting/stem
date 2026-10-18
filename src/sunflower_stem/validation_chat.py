@@ -45,7 +45,7 @@ from sunflower_stem.oracles import (
 from sunflower_stem.policy.decision import ToolRequest, target_ref
 from sunflower_stem.schemas.finding import EvidenceStrength, Finding, FindingState, TrialStats
 from sunflower_stem.schemas.target import ActionClass
-from sunflower_stem.tools.chat import ChatCase, ChatTurn
+from sunflower_stem.tools.chat import AUTHORED, ChatCase, ChatTurn
 
 #: Below this many completed trials there is no measurement, only an anecdote. A
 #: case that gets fewer -- the budget ran out, the target died -- is reported
@@ -407,8 +407,9 @@ def validate_chat_case(
     """Measure a chat case and decide what it proved.
 
     Returns (finding, report). A None finding means nothing was measured, and
-    there are exactly two ways to get one: the case needed an engagement canary
-    and none was seeded, or the ladder had no reachable rung. Both set
+    there are exactly three ways to get one: the case's turns were generated
+    rather than authored, the case needed an engagement canary and none was
+    seeded, or the ladder had no reachable rung. All three set
     `report["skipped"]`.
 
     A gate refusal is NOT one of them. The original docstring said it was, which
@@ -427,6 +428,32 @@ def validate_chat_case(
     report: dict = {"case": case.id, "taxon": case.taxon, "owasp": case.owasp,
                     "trials": [], "controls": [], "gate_denied": False,
                     "skipped": "", "threshold": want}
+
+    # THE MEASUREMENT / DISCOVERY LINE, and it is first because it must cost no
+    # target messages to enforce.
+    #
+    # An adaptive attacker searching for a sequence that works is a different mode
+    # from measuring a sequence. If each trial sends different text then ten trials
+    # are not ten samples of one thing, and the control arm has nothing fixed to be
+    # a twin of: the rate and the p-value stop meaning anything while still
+    # printing. A discovery run's output is a candidate case file with its turns and
+    # NO rate, and a human writes its control arm before it is measured, because
+    # deleting the words a tool guessed were the attack falsifies nothing.
+    #
+    # Reported rather than raised. `sweep._validate_one` wraps this call in a
+    # blanket `except Exception` and turns anything raised into a generic error row,
+    # which looks identical to a timeout or a dead endpoint. `skipped` is the
+    # channel that already means "nothing was measured, and here is why", and it is
+    # the one the `not probed` row reads.
+    if case.turns_origin != AUTHORED:
+        report["skipped"] = (
+            f"refused: this case's turns are {case.turns_origin}, not authored. An "
+            f"adaptive attacker must not run inside the measurement path -- ten "
+            f"trials of text that changes are not ten samples of one thing, and the "
+            f"control arm has nothing fixed to be a twin of. Freeze the turns into a "
+            f"case file and have a person write its control arm.")
+        report["turns_origin"] = case.turns_origin
+        return None, report
 
     # Precedence: the case's own value, then the engagement's, then a minted one.
     #
